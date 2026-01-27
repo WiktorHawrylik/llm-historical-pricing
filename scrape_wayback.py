@@ -12,7 +12,6 @@ import re
 import sys
 from datetime import datetime
 from typing import Dict, List, Optional
-from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
@@ -112,7 +111,7 @@ class WaybackScraper:
         try:
             dt = datetime.strptime(timestamp, '%Y%m%d%H%M%S')
             date_str = dt.strftime('%Y-%m-%d')
-        except:
+        except ValueError:
             date_str = timestamp
         
         pricing_data = {
@@ -147,8 +146,8 @@ class WaybackScraper:
                             # Look for price patterns in remaining cells
                             for j in range(i + 1, len(cell_texts)):
                                 price_text = cell_texts[j]
-                                # Match patterns like $0.002, 0.002, etc.
-                                price_match = re.search(r'\$?(\d+\.?\d*)', price_text)
+                                # Match patterns like $0.002, 0.002, 5, $10, etc.
+                                price_match = re.search(r'\$?(\d+(?:\.\d+)?)', price_text)
                                 if price_match:
                                     price_value = float(price_match.group(1))
                                     
@@ -179,7 +178,7 @@ class WaybackScraper:
                     
                     # Check next few lines for pricing
                     for j in range(i + 1, min(i + 5, len(lines))):
-                        price_match = re.search(r'\$?(\d+\.?\d+)', lines[j])
+                        price_match = re.search(r'\$?(\d+(?:\.\d+)?)', lines[j])
                         if price_match:
                             price_value = float(price_match.group(1))
                             if 'input' in lines[j].lower():
