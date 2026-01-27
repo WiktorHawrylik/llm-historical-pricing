@@ -18,10 +18,8 @@ import json
 import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-from urllib.parse import quote
 
 import requests
-from dateutil import parser as date_parser
 
 
 class WaybackPricingFetcher:
