@@ -1,9 +1,6 @@
 # llm-historical-pricing
-LLM cost per token history
 
-## Overview
-
-This project uses the Internet Archive's Wayback Machine to retrieve historical pricing data for OpenAI's language models. It scrapes archived versions of OpenAI's pricing pages and compiles them into a structured JSON format.
+Scrape historical LLM pricing data from OpenAI using the Wayback Machine.
 
 ## Installation
 
@@ -13,68 +10,68 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the scraper to fetch historical pricing data:
-
 ```bash
-python scrape_wayback.py
+python scrape_wayback.py -o <output.json> [--from-date YYYYMMDD]
 ```
 
-### Command Line Options
+### Required Arguments
+- `-o, --output`: Output JSON file path (must end with `.json`)
 
-```bash
-python scrape_wayback.py [options]
+### Optional Arguments
+- `--from-date`: Start date in YYYYMMDD format (default: `20221101`)
 
-Options:
-  -o, --output FILE      Output JSON file path (default: history.json)
-  --from-date YYYYMMDD   Start date for snapshots (default: 20221101)
-  --urls URL [URL ...]   Custom URLs to scrape (overrides defaults)
-  -h, --help            Show help message
-```
+The script scrapes `https://platform.openai.com/docs/pricing` from the Wayback Machine.
 
 ### Examples
 
-Scrape with custom output file:
+Scrape pricing history:
 ```bash
 python scrape_wayback.py -o openai_pricing_history.json
 ```
 
 Scrape from a specific date:
 ```bash
-python scrape_wayback.py --from-date 20230101
+python scrape_wayback.py -o recent_pricing.json --from-date 20260101
 ```
 
-Scrape custom URLs:
-```bash
-python scrape_wayback.py --urls https://example.com/pricing
+## Output Format
+
+The output is a JSON array of flat records, optimized for Spark and data analysis:
+
+```json
+[
+  {
+    "model": "gpt-4",
+    "pricing_type": "per_1m_tokens",
+    "category": "language_model",
+    "timestamp": "2023-03-14T12:00:00+00:00",
+    "input": 30.0,
+    "cached_input": null,
+    "output": 60.0
+  }
+]
 ```
 
-This will:
-1. Query the Wayback Machine for snapshots of OpenAI pricing pages going back to late 2022
-2. Fetch and parse pricing information from each snapshot
-3. Generate a `history.json` file with the compiled pricing history
+### Field Descriptions
+- `model`: Model name (string)
+- `pricing_type`: Always `"per_1m_tokens"` (string)
+- `category`: Always `"language_model"` (string)
+- `timestamp`: ISO 8601 timestamp with UTC timezone (string)
+- `input`: Input price per 1M tokens (float or null)
+- `cached_input`: Cached input price per 1M tokens (float or null)
+- `output`: Output price per 1M tokens (float or null)
 
-The output JSON structure includes:
-- `generated_at`: Timestamp when the data was generated
-- `sources`: URLs that were scraped
-- `history`: Array of pricing snapshots, each containing:
-  - `date`: Human-readable date
-  - `timestamp`: Wayback Machine timestamp
-  - `source_url`: Original pricing page URL
-  - `models`: Extracted pricing information
-
-## Data Sources
-
-The scraper retrieves data from:
-- https://platform.openai.com/docs/pricing
-- https://openai.com/chatgpt/pricing
-
-## Sample Output
-
-A sample output file (`history_sample.json`) is included in this repository to demonstrate the expected JSON structure. This shows how pricing data for models like GPT-4, GPT-3.5-turbo, and others are organized chronologically.
+**Note**: Prices are converted from per-1K-tokens to per-1M-tokens (×1000).
 
 ## How It Works
 
-1. **Wayback Machine API**: Queries the Wayback Machine CDX API to find available snapshots
-2. **Snapshot Retrieval**: Fetches HTML content from archived pages
-3. **Price Extraction**: Parses HTML to extract model pricing information
-4. **JSON Output**: Compiles data into a structured format similar to [openai-pricing-api](https://bes-dev.github.io/openai-pricing-api/history.json)
+1. Queries Wayback Machine CDX API for archived snapshots (one per day)
+2. Fetches HTML from archived pages (1 second delay between requests)
+3. Parses HTML to extract pricing information
+4. Outputs flat JSON records sorted by timestamp
+
+The scraper retrieves all available snapshots from web.archive.org, including recent ones.
+
+## Rate Limiting
+
+Automatically adds 1 second delay between snapshot requests to respect Wayback Machine rate limits.

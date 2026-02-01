@@ -8,8 +8,10 @@ pricing information to create a historical pricing database.
 
 import argparse
 import json
+import os
 import re
 import sys
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -25,13 +27,12 @@ class WaybackScraper:
     
     PRICING_URLS = [
         "https://platform.openai.com/docs/pricing",
-        "https://openai.com/chatgpt/pricing",
     ]
     
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
     
     def get_snapshots(self, url: str, from_date: str = "20221101") -> List[Dict]:
@@ -51,7 +52,7 @@ class WaybackScraper:
             'output': 'json',
             'fl': 'timestamp,original',
             'filter': 'statuscode:200',
-            'collapse': 'timestamp:6',  # One snapshot per month
+            'collapse': 'timestamp:8',  # One snapshot per day
         }
         
         try:
@@ -88,9 +89,21 @@ class WaybackScraper:
         try:
             response = self.session.get(wayback_url, timeout=30)
             response.raise_for_status()
+            
+            # Check if we got actual content (not an error page)
+            if len(response.text) < 1000:
+                print(f"Warning: Snapshot content seems too small, may be broken", file=sys.stderr)
+                return None
+                
             return response.text
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP Error {e.response.status_code}: Snapshot not available", file=sys.stderr)
+            return None
+        except requests.exceptions.Timeout:
+            print(f"Timeout: Snapshot took too long to fetch", file=sys.stderr)
+            return None
         except Exception as e:
-            print(f"Error fetching snapshot {timestamp} for {url}: {e}", file=sys.stderr)
+            print(f"Error fetching snapshot: {e}", file=sys.stderr)
             return None
     
     def parse_pricing_data(self, html: str, timestamp: str, source_url: str) -> Optional[Dict]:
@@ -203,7 +216,7 @@ class WaybackScraper:
         
         return None
     
-    def scrape_all(self, from_date: str = "20221101") -> List[Dict]:
+    def scrape_all(self, from_date: str = "20221101") -> Dict[str, List[Dict]]:
         """
         Scrape all available pricing data from Wayback Machine.
         
@@ -211,29 +224,85 @@ class WaybackScraper:
             from_date: Start date in YYYYMMDD format
         
         Returns:
-            List of pricing data dictionaries
+            Dictionary mapping source URLs to list of pricing data
         """
-        all_pricing_data = []
+        pricing_by_source = {}
         
         for url in self.PRICING_URLS:
             print(f"Fetching snapshots for {url}...", file=sys.stderr)
             snapshots = self.get_snapshots(url, from_date=from_date)
             print(f"Found {len(snapshots)} snapshots", file=sys.stderr)
             
+            url_pricing_data = []
+            
             for i, snapshot in enumerate(snapshots, 1):
                 timestamp = snapshot['timestamp']
-                print(f"Processing snapshot {i}/{len(snapshots)}: {timestamp}...", file=sys.stderr)
+                wayback_url = self.WAYBACK_URL.format(timestamp=timestamp, url=url)
+                print(f"Processing snapshot {i}/{len(snapshots)}: {timestamp} - {wayback_url}", file=sys.stderr)
                 
                 html = self.fetch_snapshot_content(timestamp, url)
                 if html:
                     pricing_data = self.parse_pricing_data(html, timestamp, url)
                     if pricing_data:
-                        all_pricing_data.append(pricing_data)
+                        url_pricing_data.append(pricing_data)
+                        print(f"✓ Successfully extracted pricing data", file=sys.stderr)
+                    else:
+                        print(f"✗ No pricing data found in snapshot", file=sys.stderr)
+                else:
+                    print(f"✗ Failed to fetch snapshot", file=sys.stderr)
+                
+                # Add 1 second delay between requests to respect rate limits
+                if i < len(snapshots):
+                    time.sleep(1)
+            
+            # Sort by date
+            url_pricing_data.sort(key=lambda x: x['timestamp'])
+            pricing_by_source[url] = url_pricing_data
         
-        # Sort by date
-        all_pricing_data.sort(key=lambda x: x['timestamp'])
+        return pricing_by_source
+    
+    def transform_to_records(self, pricing_data: Dict, category: str = "language_model") -> List[Dict]:
+        """
+        Transform pricing data to flat record format.
         
-        return all_pricing_data
+        Args:
+            pricing_data: Original pricing data structure
+            category: Model category (default: language_model)
+        
+        Returns:
+            List of flat records
+        """
+        records = []
+        
+        for snapshot in pricing_data:
+            date_str = snapshot['date']
+            timestamp_str = snapshot['timestamp']
+            
+            # Convert timestamp to ISO format
+            try:
+                dt = datetime.strptime(timestamp_str, '%Y%m%d%H%M%S')
+                iso_timestamp = dt.isoformat() + '+00:00'
+            except ValueError:
+                iso_timestamp = datetime.now().isoformat() + '+00:00'
+            
+            for model in snapshot['models']:
+                # Convert prices from per_1k to per_1m tokens (multiply by 1000)
+                input_price_1k = model.get('input_price_per_1k') or model.get('price_per_1k')
+                output_price_1k = model.get('output_price_per_1k') or model.get('price_per_1k')
+                cached_input_price_1k = model.get('cached_input_price_per_1k')
+                
+                record = {
+                    'model': model['name'],
+                    'pricing_type': 'per_1m_tokens',
+                    'category': category,
+                    'timestamp': iso_timestamp,
+                    'input': input_price_1k * 1000 if input_price_1k is not None else None,
+                    'cached_input': cached_input_price_1k * 1000 if cached_input_price_1k is not None else None,
+                    'output': output_price_1k * 1000 if output_price_1k is not None else None
+                }
+                records.append(record)
+        
+        return records
 
 
 def main():
@@ -243,46 +312,40 @@ def main():
     )
     parser.add_argument(
         '-o', '--output',
-        default='history.json',
-        help='Output JSON file path (default: history.json)'
+        required=True,
+        help='Output JSON file path (must end with .json)'
     )
     parser.add_argument(
         '--from-date',
         default='20221101',
         help='Start date in YYYYMMDD format (default: 20221101)'
     )
-    parser.add_argument(
-        '--urls',
-        nargs='+',
-        help='Custom URLs to scrape (overrides defaults)'
-    )
     
     args = parser.parse_args()
     
+    # Validate output is a JSON file
+    if not args.output.endswith('.json'):
+        parser.error('Output file must end with .json')
+    
     scraper = WaybackScraper()
     
-    # Override URLs if provided
-    if args.urls:
-        scraper.PRICING_URLS = args.urls
+    pricing_by_source = scraper.scrape_all(from_date=args.from_date)
     
-    pricing_history = scraper.scrape_all(from_date=args.from_date)
-    
-    # Create output structure
-    output = {
-        'generated_at': datetime.now().isoformat(),
-        'sources': scraper.PRICING_URLS,
-        'history': pricing_history
-    }
-    
-    # Write to file
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(output, f, indent=2, ensure_ascii=False)
-    
-    print(f"\nSuccessfully scraped {len(pricing_history)} pricing snapshots", file=sys.stderr)
-    print(f"Output written to {args.output}", file=sys.stderr)
-    
-    # Also print to stdout
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    # Write output - single file per URL
+    for url, pricing_data in pricing_by_source.items():
+        # Transform to records
+        records = scraper.transform_to_records(pricing_data, category='language_model')
+        
+        # Create output directory if needed
+        output_dir = os.path.dirname(args.output)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        
+        with open(args.output, 'w', encoding='utf-8') as f:
+            json.dump(records, f, indent=2, ensure_ascii=False)
+        
+        print(f"Written {len(records)} records to {args.output}", file=sys.stderr)
+        print(f"Source: {url}", file=sys.stderr)
 
 
 if __name__ == '__main__':
