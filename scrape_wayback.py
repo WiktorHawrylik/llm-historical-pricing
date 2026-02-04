@@ -52,7 +52,7 @@ class WaybackScraper:
             'output': 'json',
             'fl': 'timestamp,original',
             'filter': 'statuscode:200',
-            'collapse': 'timestamp:8',  # One snapshot per day
+            'collapse': 'timestamp:6',  # One snapshot per month
         }
         
         try:
@@ -216,7 +216,7 @@ class WaybackScraper:
         
         return None
     
-    def scrape_all(self, from_date: str = "20221101") -> Dict[str, List[Dict]]:
+    def scrape_all(self, from_date: str = "20221101") -> List[Dict]:
         """
         Scrape all available pricing data from Wayback Machine.
         
@@ -224,16 +224,14 @@ class WaybackScraper:
             from_date: Start date in YYYYMMDD format
         
         Returns:
-            Dictionary mapping source URLs to list of pricing data
+            List of pricing data dictionaries
         """
-        pricing_by_source = {}
+        all_pricing_data = []
         
         for url in self.PRICING_URLS:
             print(f"Fetching snapshots for {url}...", file=sys.stderr)
             snapshots = self.get_snapshots(url, from_date=from_date)
             print(f"Found {len(snapshots)} snapshots", file=sys.stderr)
-            
-            url_pricing_data = []
             
             for i, snapshot in enumerate(snapshots, 1):
                 timestamp = snapshot['timestamp']
@@ -244,7 +242,7 @@ class WaybackScraper:
                 if html:
                     pricing_data = self.parse_pricing_data(html, timestamp, url)
                     if pricing_data:
-                        url_pricing_data.append(pricing_data)
+                        all_pricing_data.append(pricing_data)
                         print(f"✓ Successfully extracted pricing data", file=sys.stderr)
                     else:
                         print(f"✗ No pricing data found in snapshot", file=sys.stderr)
@@ -254,12 +252,11 @@ class WaybackScraper:
                 # Add 1 second delay between requests to respect rate limits
                 if i < len(snapshots):
                     time.sleep(1)
-            
-            # Sort by date
-            url_pricing_data.sort(key=lambda x: x['timestamp'])
-            pricing_by_source[url] = url_pricing_data
         
-        return pricing_by_source
+        # Sort by date
+        all_pricing_data.sort(key=lambda x: x['timestamp'])
+        
+        return all_pricing_data
     
     def transform_to_records(self, pricing_data: Dict, category: str = "language_model") -> List[Dict]:
         """
@@ -329,23 +326,22 @@ def main():
     
     scraper = WaybackScraper()
     
-    pricing_by_source = scraper.scrape_all(from_date=args.from_date)
+    pricing_history = scraper.scrape_all(from_date=args.from_date)
     
-    # Write output - single file per URL
-    for url, pricing_data in pricing_by_source.items():
-        # Transform to records
-        records = scraper.transform_to_records(pricing_data, category='language_model')
-        
-        # Create output directory if needed
-        output_dir = os.path.dirname(args.output)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        
-        with open(args.output, 'w', encoding='utf-8') as f:
-            json.dump(records, f, indent=2, ensure_ascii=False)
-        
-        print(f"Written {len(records)} records to {args.output}", file=sys.stderr)
-        print(f"Source: {url}", file=sys.stderr)
+    # Transform to flat records format
+    records = scraper.transform_to_records(pricing_history, category='language_model')
+    
+    # Create output directory if needed
+    output_dir = os.path.dirname(args.output)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    
+    # Write flat array of records
+    with open(args.output, 'w', encoding='utf-8') as f:
+        json.dump(records, f, indent=2, ensure_ascii=False)
+    
+    print(f"\nSuccessfully scraped {len(pricing_history)} pricing snapshots", file=sys.stderr)
+    print(f"Written {len(records)} records to {args.output}", file=sys.stderr)
 
 
 if __name__ == '__main__':
