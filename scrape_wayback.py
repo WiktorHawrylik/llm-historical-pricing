@@ -84,6 +84,19 @@ class WaybackScraper:
         Returns:
             HTML content or None if fetch fails
         """
+        # Check cache first
+        cache_dir = "data/html_snapshot"
+        cache_file = os.path.join(cache_dir, f"{timestamp}.html")
+        
+        if os.path.exists(cache_file):
+            print(f"   💾 Loading from cache: {cache_file}", file=sys.stderr)
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return f.read()
+            except Exception as e:
+                print(f"   ❌ Error reading cache: {e}", file=sys.stderr)
+                # Fall through to fetch from web
+        
         wayback_url = self.WAYBACK_URL.format(timestamp=timestamp, url=url)
         
         try:
@@ -94,6 +107,15 @@ class WaybackScraper:
             if len(response.text) < 1000:
                 print(f"Warning: Snapshot content seems too small, may be broken", file=sys.stderr)
                 return None
+            
+            # Save to cache
+            os.makedirs(cache_dir, exist_ok=True)
+            try:
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    f.write(response.text)
+                print(f"   💾 Saved to cache: {cache_file}", file=sys.stderr)
+            except Exception as e:
+                print(f"   ⚠️  Warning: Could not save to cache: {e}", file=sys.stderr)
                 
             return response.text
         except requests.exceptions.HTTPError as e:
@@ -229,25 +251,26 @@ class WaybackScraper:
         all_pricing_data = []
         
         for url in self.PRICING_URLS:
-            print(f"Fetching snapshots for {url}...", file=sys.stderr)
+            print(f"\n🔍 Fetching snapshots for {url}...", file=sys.stderr)
             snapshots = self.get_snapshots(url, from_date=from_date)
-            print(f"Found {len(snapshots)} snapshots", file=sys.stderr)
+            print(f"📊 Found {len(snapshots)} snapshots", file=sys.stderr)
             
             for i, snapshot in enumerate(snapshots, 1):
                 timestamp = snapshot['timestamp']
                 wayback_url = self.WAYBACK_URL.format(timestamp=timestamp, url=url)
-                print(f"Processing snapshot {i}/{len(snapshots)}: {timestamp} - {wayback_url}", file=sys.stderr)
+                print(f"\n⏳ Processing snapshot {i}/{len(snapshots)}: {timestamp}", file=sys.stderr)
+                print(f"   {wayback_url}", file=sys.stderr)
                 
                 html = self.fetch_snapshot_content(timestamp, url)
                 if html:
                     pricing_data = self.parse_pricing_data(html, timestamp, url)
                     if pricing_data:
                         all_pricing_data.append(pricing_data)
-                        print(f"✓ Successfully extracted pricing data", file=sys.stderr)
+                        print(f"   ✅ Successfully extracted pricing data", file=sys.stderr)
                     else:
-                        print(f"✗ No pricing data found in snapshot", file=sys.stderr)
+                        print(f"   ⚠️  No pricing data found in snapshot", file=sys.stderr)
                 else:
-                    print(f"✗ Failed to fetch snapshot", file=sys.stderr)
+                    print(f"   ❌ Failed to fetch snapshot", file=sys.stderr)
                 
                 # Add 1 second delay between requests to respect rate limits
                 if i < len(snapshots):
@@ -283,19 +306,22 @@ class WaybackScraper:
                 iso_timestamp = datetime.now().isoformat() + '+00:00'
             
             for model in snapshot['models']:
-                # Convert prices from per_1k to per_1m tokens (multiply by 1000)
-                input_price_1k = model.get('input_price_per_1k') or model.get('price_per_1k')
-                output_price_1k = model.get('output_price_per_1k') or model.get('price_per_1k')
-                cached_input_price_1k = model.get('cached_input_price_per_1k')
+                # Use prices as-is, no conversion
+                input_price = model.get('input_price_per_1k') or model.get('price_per_1k')
+                output_price = model.get('output_price_per_1k') or model.get('price_per_1k')
+                cached_input_price = model.get('cached_input_price_per_1k')
+                
+                # Determine pricing_type from the model data, default to per_1k_tokens
+                pricing_type = model.get('pricing_type', 'per_1k_tokens')
                 
                 record = {
                     'model': model['name'],
-                    'pricing_type': 'per_1m_tokens',
+                    'pricing_type': pricing_type,
                     'category': category,
                     'timestamp': iso_timestamp,
-                    'input': input_price_1k * 1000 if input_price_1k is not None else None,
-                    'cached_input': cached_input_price_1k * 1000 if cached_input_price_1k is not None else None,
-                    'output': output_price_1k * 1000 if output_price_1k is not None else None
+                    'input': input_price,
+                    'cached_input': cached_input_price,
+                    'output': output_price
                 }
                 records.append(record)
         
@@ -340,8 +366,8 @@ def main():
     with open(args.output, 'w', encoding='utf-8') as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
     
-    print(f"\nSuccessfully scraped {len(pricing_history)} pricing snapshots", file=sys.stderr)
-    print(f"Written {len(records)} records to {args.output}", file=sys.stderr)
+    print(f"\n✅ Successfully scraped {len(pricing_history)} pricing snapshots", file=sys.stderr)
+    print(f"📝 Written {len(records)} records to {args.output}", file=sys.stderr)
 
 
 if __name__ == '__main__':

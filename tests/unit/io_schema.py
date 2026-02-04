@@ -2,7 +2,12 @@
 """Test the transformation to new output format."""
 
 import json
-from datetime import datetime
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import scrape_wayback
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from scrape_wayback import WaybackScraper
 
 # Sample data in the old format
@@ -50,12 +55,12 @@ assert isinstance(records, list), "Output should be a list"
 # Check first record structure
 record = records[0]
 assert record['model'] == 'gpt-3.5-turbo'
-assert record['pricing_type'] == 'per_1m_tokens'
+assert record['pricing_type'] == 'per_1k_tokens'
 assert record['category'] == 'language_model'
 assert record['timestamp'] == '2022-12-01T12:00:00+00:00'
-assert record['input'] == 1.5  # 0.0015 * 1000
+assert record['input'] == 0.0015  # No conversion
 assert record['cached_input'] is None
-assert record['output'] == 2.0  # 0.002 * 1000
+assert record['output'] == 0.002  # No conversion
 
 # Verify all records have flat structure (no nested objects)
 for r in records:
