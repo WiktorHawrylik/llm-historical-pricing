@@ -1,6 +1,12 @@
 # llm-historical-pricing
 
-Scrape historical LLM pricing data from OpenAI using the Wayback Machine.
+Scrape historical LLM pricing data from OpenAI.
+
+## Historical Data
+
+### Wayback Machine
+- Since 2026 [OpenAI's pricing](https://platform.openai.com/docs/pricing) historical archives contain pricing data - 2026 snapshots have server-side rendered content that can be scraped.
+- During 2023-2025 [OpenAI's pricing](https://platform.openai.com/docs/pricing) historical archives don't have the data - page was JavaScript-rendered during that period. The archived pages (examples in data/html_snapshot)only contain empty shells (<div id="root"></div>) - the actual content was loaded client-side and couldn't be captured by internet archivers like Wayback Machine etc.
 
 ## Installation
 
