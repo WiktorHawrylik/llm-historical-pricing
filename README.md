@@ -1,6 +1,14 @@
 # llm-historical-pricing
 
-Historical OpenAI LLM pricing data scraped from Wayback Machine archives.
+Historical OpenAI LLM pricing data scraped from Wayback Machine archives. **Fixes required:**
+
+- Prio 1: use archive.md instead of web.archive, since the later has only data for 2026
+- But if you want to continue with web.archive than
+  - Use latest to snapshot to fix the outputs, examples:
+    - "gpt-4.1-nano" pricing captured at "2026-02-07T07:04:09+00:00" have 0.2, 0.4 and 0.8 which seem to be "output" price from batch, standard and priority pricing respecively, fix it.
+    - "gpt-4.1-nano" pricing captured at "2026-02-07T07:04:09+00:00" all have null as cached_input value as well as input value is equal to output value. This is an error, fix it.
+    - "gpt-4.1-nano" pricing captured at "2026-02-07T07:04:09+00:00"  - "pricing_type" is incorrectelly parsed, it should come from "Prices per 1M tokens." and be equal to "per_1kk_tokens"
+    - There should be another field called "token_type" and should be equal to "text" for "Text tokens"
 
 **Contents:**
 
