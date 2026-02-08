@@ -1,12 +1,10 @@
 # llm-historical-pricing
 
-Scrape historical LLM pricing data from OpenAI.
-
-## Historical Data
-
-### Wayback Machine
-- Since 2026 [OpenAI's pricing](https://platform.openai.com/docs/pricing) historical archives contain pricing data - 2026 snapshots have server-side rendered content that can be scraped.
-- During 2023-2025 [OpenAI's pricing](https://platform.openai.com/docs/pricing) historical archives don't have the data - page was JavaScript-rendered during that period. The archived pages (examples in data/html_snapshot)only contain empty shells (<div id="root"></div>) - the actual content was loaded client-side and couldn't be captured by internet archivers like Wayback Machine etc.
+In this repo you will find 
+- OpenAI historical LLM pricing in [data/output](data/output) 
+- OpenAI `https://platform.openai.com/docs/pricing` HTML snapshots in [data/input](data/input) 
+- OpenAI historical LLM pricing scrapers, simplistic and mininal stanalone scripts that processed data into well defiend unified format
+- List of [issues](docs/ISSUES.md) with scraping OpenAI data from Wayback Machine
 
 ## Installation
 
@@ -17,33 +15,26 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python scrape_wayback.py -o <output.json> [--from-date YYYYMMDD]
+python scrape_wayback.py -o <output.json> [--from-date YYYYMMDD] [--no-cache]
 ```
-
-For example:
-```bash
-python3 scrape_wayback.py -o data/output/openai_prices_since_20260201.json --from-date 20260201
-```
-
 
 ### Required Arguments
+
 - `-o, --output`: Output JSON file path (must end with `.json`)
 
 ### Optional Arguments
+
 - `--from-date`: Start date in YYYYMMDD format (default: `20221101`)
+- `--no-cache`: Bypass HTML cache and force re-download from Wayback Machine
 
 The script scrapes `https://platform.openai.com/docs/pricing` from the Wayback Machine.
 
 ### Examples
 
 Scrape pricing history:
-```bash
-python scrape_wayback.py -o data/output/openai_pricing_history.json
-```
 
-Scrape from a specific date:
 ```bash
-python scrape_wayback.py -o data/output/recent_pricing.json --from-date 20260101
+python scrape_wayback.py -o data/output/data/output/wayback_openai_prices_since_2023.json
 ```
 
 ## Output Format
@@ -56,7 +47,7 @@ The output is a JSON array of flat records, optimized for Spark and data analysi
     "model": "gpt-4",
     "pricing_type": "per_1k_tokens",
     "category": "language_model",
-    "timestamp": "2023-03-14T12:00:00+00:00",
+    "captured_at": "2023-03-14T12:00:00+00:00",
     "input": 0.03,
     "cached_input": null,
     "output": 0.06
@@ -68,17 +59,17 @@ The output is a JSON array of flat records, optimized for Spark and data analysi
 - `model`: Model name (string)
 - `pricing_type`: Pricing unit as found in the HTML (e.g., "per_1k_tokens", "per_1m_tokens")
 - `category`: Always `"language_model"` (string)
-- `timestamp`: ISO 8601 timestamp with UTC timezone (string)
+- `captured_at`: Wayback Machine snapshot timestamp in ISO 8601 format with UTC timezone (string)
 - `input`: Input price in the unit specified by pricing_type (float or null)
-- `cached_input`: Cached input price in the unit specified by pricing_type (float or null)
+- `cached_input`: Cached input price in the unit specified by pricing_type (float or null). A feature where OpenAI charges less for input tokens that have been cached from previous API requests.
 - `output`: Output price in the unit specified by pricing_type (float or null)
 
-**Note**: Prices are reported as-is from the source HTML without conversion.
+**Note**: `captured_at` represents captured snapshot, not when OpenAI implemented the pricing. Prices are reported as-is from the source HTML without conversion.
 
 ## How It Works
 
-1. Queries Wayback Machine CDX API for archived snapshots (one per month)
-2. Checks cache directory (`data/html_snapshot/`) for previously downloaded HTML
+1. Queries Wayback Machine CDX API for archived snapshots (one per day)
+2. Checks cache directory (`data/input/org_archive_web/com/openai/platform/docs/pricing/`) for previously downloaded HTML
 3. Fetches HTML from archived pages if not cached (1 second delay between requests)
 4. Parses HTML to extract pricing information
 5. Outputs flat JSON records sorted by timestamp to `data/output/`

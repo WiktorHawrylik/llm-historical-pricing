@@ -66,7 +66,7 @@ assert record['output'] == 0.002  # No conversion
 for r in records:
     assert all(not isinstance(v, (dict, list)) or v is None for v in r.values()), \
         "All values should be primitives (no nested structures)"
-    assert set(r.keys()) == {'model', 'pricing_type', 'category', 'timestamp', 'input', 'cached_input', 'output'}, \
+    assert set(r.keys()) == {'model', 'pricing_type', 'category', 'captured_at', 'input', 'cached_input', 'output'}, \
         f"Unexpected keys: {r.keys()}"
 
 print("\n✓ All assertions passed!")

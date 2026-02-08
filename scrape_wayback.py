@@ -29,7 +29,8 @@ class WaybackScraper:
         "https://platform.openai.com/docs/pricing",
     ]
     
-    def __init__(self):
+    def __init__(self, use_cache: bool = True):
+        self.use_cache = use_cache
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -52,7 +53,7 @@ class WaybackScraper:
             'output': 'json',
             'fl': 'timestamp,original',
             'filter': 'statuscode:200',
-            'collapse': 'timestamp:6',  # One snapshot per month
+            'collapse': 'timestamp:8',  # One snapshot per day
         }
         
         try:
@@ -85,10 +86,10 @@ class WaybackScraper:
             HTML content or None if fetch fails
         """
         # Check cache first
-        cache_dir = "data/html_snapshot"
+        cache_dir = "data/input/org_archive_web/com/openai/platform/docs/pricing"
         cache_file = os.path.join(cache_dir, f"{timestamp}.html")
         
-        if os.path.exists(cache_file):
+        if self.use_cache and os.path.exists(cache_file):
             print(f"   💾 Loading from cache: {cache_file}", file=sys.stderr)
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -109,13 +110,14 @@ class WaybackScraper:
                 return None
             
             # Save to cache
-            os.makedirs(cache_dir, exist_ok=True)
-            try:
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    f.write(response.text)
-                print(f"   💾 Saved to cache: {cache_file}", file=sys.stderr)
-            except Exception as e:
-                print(f"   ⚠️  Warning: Could not save to cache: {e}", file=sys.stderr)
+            if self.use_cache:
+                os.makedirs(cache_dir, exist_ok=True)
+                try:
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        f.write(response.text)
+                    print(f"   💾 Saved to cache: {cache_file}", file=sys.stderr)
+                except Exception as e:
+                    print(f"   ⚠️  Warning: Could not save to cache: {e}", file=sys.stderr)
                 
             return response.text
         except requests.exceptions.HTTPError as e:
@@ -318,7 +320,7 @@ class WaybackScraper:
                     'model': model['name'],
                     'pricing_type': pricing_type,
                     'category': category,
-                    'timestamp': iso_timestamp,
+                    'captured_at': iso_timestamp,
                     'input': input_price,
                     'cached_input': cached_input_price,
                     'output': output_price
@@ -343,6 +345,11 @@ def main():
         default='20221101',
         help='Start date in YYYYMMDD format (default: 20221101)'
     )
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Bypass HTML cache and force re-download from Wayback Machine'
+    )
     
     args = parser.parse_args()
     
@@ -350,7 +357,7 @@ def main():
     if not args.output.endswith('.json'):
         parser.error('Output file must end with .json')
     
-    scraper = WaybackScraper()
+    scraper = WaybackScraper(use_cache=not args.no_cache)
     
     pricing_history = scraper.scrape_all(from_date=args.from_date)
     

@@ -12,7 +12,7 @@ Always output a flat JSON array. Each record must have exactly these fields:
   "model": "string",
   "pricing_type": "string (as found in HTML)",
   "category": "language_model",
-  "timestamp": "ISO-8601 with +00:00 timezone",
+  "captured_at": "ISO-8601 with +00:00 timezone",
   "input": float | null,
   "cached_input": float | null,
   "output": float | null
@@ -23,16 +23,16 @@ Always output a flat JSON array. Each record must have exactly these fields:
 - Prices are reported AS-IS from source HTML (NO conversion)
 - `pricing_type` should reflect the actual pricing unit from the HTML (e.g., "per_1k_tokens", "per_1m_tokens")
 - `category` is always `"language_model"`
-- `timestamp` must be ISO 8601 format with UTC timezone (`+00:00`)
+- `captured_at` must be ISO 8601 format with UTC timezone (`+00:00`)
 - NO nested objects or arrays in records
 - Use `null` for missing prices, never omit fields
 
 ### Wayback Machine Integration
-- Use CDX API with `collapse=timestamp:6` (monthly snapshots)
+- Use CDX API with `collapse=timestamp:8` (daily snapshots)
 - Add 1-second delay between snapshot requests (`time.sleep(1)`)
 - Handle HTTP errors gracefully (snapshots may be unavailable)
 - Validate content size (skip if < 1000 bytes)
-- **HTML Caching**: Save fetched HTML to `data/html_snapshot/<timestamp>.html`
+- **HTML Caching**: Save fetched HTML to `data/input/org_archive_web/com/openai/platform/docs/pricing/<timestamp>.html`
   - Check cache before making HTTP requests
   - Load from cache if file exists
   - Save to cache on successful download
@@ -57,10 +57,10 @@ Always output a flat JSON array. Each record must have exactly these fields:
 The `transform_to_records()` method must:
 1. Accept list of historical snapshots (old format)
 2. Flatten to one record per model per snapshot
-3. Convert timestamps to ISO 8601
+3. Convert timestamps to ISO 8601 and store in `captured_at`
 4. Report prices as-is WITHOUT conversion
 5. Map `input_price_per_1k` → `input`, `output_price_per_1k` → `output`
-6. Use `price_per_1k` as fallback for both input/output if separate prices not available
+6. Use `price_per_1k` as fallback for both data/input/output if separate prices not available
 7. Extract `pricing_type` from model data (defaults to "per_1k_tokens" if not specified)
 
 ### Testing
@@ -74,8 +74,9 @@ The `transform_to_records()` method must:
 - **Source code**: `scrape_wayback.py` (main scraper)
 - **Tests**: `tests/unit/io_schema.py` (output schema validation)
 - **Data directory**: `data/` (gitignored)
-  - `data/html_snapshot/` - cached HTML files
   - `data/output/` - generated JSON files
+- **Input directory**: `data/input/` (gitignored)
+  - `data/input/org_archive_web/com/openai/platform/docs/pricing/` - cached HTML files from web.archive.org
 - **Output files**: Should be placed in `data/output/*.json`
 
 ## Legal & Data Considerations
@@ -97,7 +98,7 @@ The `transform_to_records()` method must:
 - ❌ Add markdown/documentation files unless explicitly requested
 - ❌ Make output argument optional (it's required)
 - ❌ Remove HTML caching (improves performance and reduces load)
-- ❌ Change cache directory from `data/html_snapshot/`
+- ❌ Change cache directory from `data/input/org_archive_web/com/openai/platform/docs/pricing/`
 - ❌ Change output directory from `data/output/`
 
 ## When Adding Features
