@@ -1,10 +1,15 @@
 # llm-historical-pricing
 
-In this repo you will find 
-- OpenAI historical LLM pricing in [data/output](data/output) 
-- OpenAI `https://platform.openai.com/docs/pricing` HTML snapshots in [data/input](data/input) 
-- OpenAI historical LLM pricing scrapers, simplistic and mininal stanalone scripts that processed data into well defiend unified format
-- List of [issues](docs/ISSUES.md) with scraping OpenAI data from Wayback Machine
+Historical OpenAI LLM pricing data scraped from Wayback Machine archives.
+
+**Contents:**
+
+- Historical pricing data: [data/output](data/output)
+- Archived HTML snapshots: [data/input](data/input)
+- Minimal standalone scraper with well-defined output format
+- Selected [issues](docs/ISSUES.md) with Wayback Machine scraping
+
+**Note:** OpenAI has 4 pricing tiers: [batch](https://platform.openai.com/docs/pricing?latest-pricing=batch), [flex](https://platform.openai.com/docs/pricing?latest-pricing=flex), [standard](https://platform.openai.com/docs/pricing?latest-pricing=standard), and [priority](https://platform.openai.com/docs/pricing?latest-pricing=priority). This scraper currently extracts standard pricing, there seems to be very few historical datapoints for others.
 
 ## Installation
 
@@ -27,14 +32,12 @@ python scrape_wayback.py -o <output.json> [--from-date YYYYMMDD] [--no-cache]
 - `--from-date`: Start date in YYYYMMDD format (default: `20221101`)
 - `--no-cache`: Bypass HTML cache and force re-download from Wayback Machine
 
-The script scrapes `https://platform.openai.com/docs/pricing` from the Wayback Machine.
-
 ### Examples
 
-Scrape pricing history:
-
 ```bash
-python scrape_wayback.py -o data/output/data/output/wayback_openai_prices_since_2023.json
+python scrape_wayback.py -o data/output/openai_pricing.json
+python scrape_wayback.py -o data/output/recent.json --from-date 20260101
+python scrape_wayback.py -o data/output/fresh.json --no-cache
 ```
 
 ## Output Format
@@ -56,38 +59,33 @@ The output is a JSON array of flat records, optimized for Spark and data analysi
 ```
 
 ### Field Descriptions
-- `model`: Model name (string)
-- `pricing_type`: Pricing unit as found in the HTML (e.g., "per_1k_tokens", "per_1m_tokens")
-- `category`: Always `"language_model"` (string)
-- `captured_at`: Wayback Machine snapshot timestamp in ISO 8601 format with UTC timezone (string)
-- `input`: Input price in the unit specified by pricing_type (float or null)
-- `cached_input`: Cached input price in the unit specified by pricing_type (float or null). A feature where OpenAI charges less for input tokens that have been cached from previous API requests.
-- `output`: Output price in the unit specified by pricing_type (float or null)
 
-**Note**: `captured_at` represents captured snapshot, not when OpenAI implemented the pricing. Prices are reported as-is from the source HTML without conversion.
+- `model`: Model name
+- `pricing_type`: Pricing unit from HTML (e.g., "per_1k_tokens", "per_1m_tokens")
+- `category`: Always `"language_model"`
+- `captured_at`: Wayback Machine snapshot timestamp (ISO 8601, UTC)
+- `input`: Input token price (float or null)
+- `cached_input`: Cached input token price (prompt caching discount, float or null)
+- `output`: Output token price (float or null)
+
+**Note:** `captured_at` is the snapshot date, not the pricing effective date. Prices are reported as-is without conversion.
 
 ## How It Works
 
 1. Queries Wayback Machine CDX API for archived snapshots (one per day)
-2. Checks cache directory (`data/input/org_archive_web/com/openai/platform/docs/pricing/`) for previously downloaded HTML
-3. Fetches HTML from archived pages if not cached (1 second delay between requests)
-4. Parses HTML to extract pricing information
-5. Outputs flat JSON records sorted by timestamp to `data/output/`
+2. Checks cache directory (`input/org_archive_web/com/openai/platform/docs/pricing/`)
+3. Fetches HTML from Wayback Machine if not cached (1-second delay between requests)
+4. Parses HTML to extract pricing data
+5. Outputs flat JSON records sorted by timestamp
 
-The scraper retrieves all available snapshots from web.archive.org, including recent ones. HTML snapshots are cached locally to avoid redundant downloads.
+## Disclaimer
 
-## Rate Limiting
+**Data Source:** Publicly available OpenAI pricing pages archived by Internet Archive's Wayback Machine.
 
-Automatically adds 1 second delay between snapshot requests to respect Wayback Machine rate limits.
+**Purpose:** Informational, research, and archival use only.
 
-## Data Disclaimer
+**Affiliation:** Not affiliated with or endorsed by OpenAI. All pricing data belongs to OpenAI.
 
-**Data Source**: This project scrapes publicly available pricing information from OpenAI's pricing documentation page (`platform.openai.com/docs/pricing`) via the Internet Archive's Wayback Machine.
+**License:** GPL-3.0 applies to scraper code only, not the data. Respect OpenAI's terms of service.
 
-**Purpose**: This tool and the data it generates are provided for **informational, research, and archival purposes only**. The data represents historical snapshots of publicly posted pricing information.
-
-**No Affiliation**: This project is not affiliated with, endorsed by, or sponsored by OpenAI. All pricing data belongs to OpenAI and is subject to their terms of service.
-
-**License**: The GPL-3.0 license applies to the scraper code only, not to the pricing data itself. Users should respect OpenAI's intellectual property rights and terms of service when using this data.
-
-**No Warranty**: The data is provided "as is" without warranty of any kind. Pricing information may be incomplete, inaccurate, or outdated.
+**Warranty:** Provided "as is" without warranty. Data may be incomplete or inaccurate.
